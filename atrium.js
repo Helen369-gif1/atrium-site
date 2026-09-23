@@ -4,8 +4,9 @@
    Координаты — в пикселях исходной картинки 6516 × 2172.
    ====================================================================== */
 const ATRIUM = {
-  title: 'The Atrium',          // заголовок сверху
-  signature: 'Glonari',          // подпись под заголовком ('' — скрыть)
+  overline: 'Glonari',          // подпись над заголовком ('' — скрыть)
+  title: 'Digital Banker',      // главная строка заголовка ('' — скрыть)
+  subtitle: 'Atrium',           // золотая строка под заголовком ('' — скрыть)
   hint: 'Drag to look around. Choose a doorway to enter.',
   hintTouch: 'Swipe to look around. Tap a doorway to enter.',
 
@@ -64,9 +65,10 @@ const ATRIUM = {
   const roomVideo = $('room-video'), backBtn = $('back'), veil = $('veil');
   const nav = $('rooms-nav');
 
-  $('title').textContent = ATRIUM.title;
-  $('signature').textContent = ATRIUM.signature;
-  $('signature').hidden = !ATRIUM.signature;
+  for (const key of ['overline', 'title', 'subtitle']) {
+    $(key).textContent = ATRIUM[key];
+    $(key).hidden = !ATRIUM[key];
+  }
   const coarse = matchMedia('(pointer: coarse)').matches;
   const HINT = coarse ? ATRIUM.hintTouch : ATRIUM.hint;
   caption.textContent = HINT;
