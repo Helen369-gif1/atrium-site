@@ -19,28 +19,31 @@ const ATRIUM = {
   },
 
   // door:   cx — центр проёма, hw — половина ширины, top — верх арки, bottom — порог
-  // plaque: филёнка над аркой, куда вписывается надпись
+  // plaque: внутреннее поле филёнки над аркой, куда вписывается надпись.
+  //         На картинке филёнки нарисованы в перспективе, поэтому это не прямоугольник,
+  //         а четыре угла [x, y] по порядку: [левый-верх, правый-верх, правый-низ, левый-низ].
+  //         Надпись встаёт в центр поля и наклоняется вдоль линии середин левого и правого краёв.
   // href:   куда вести по клику (null — показать экран комнаты-заглушку)
   rooms: [
     { id: 'experience', name: 'Experience', inscription: ['Experience'],
       door: { cx: 549,  hw: 255, top: 590, bottom: 1735 },
-      plaque: { cx: 575,  w: 533, top: 307, bottom: 537 }, href: null },
+      plaque: [[326,323], [829,437], [829,527], [326,427]], href: null },
     { id: 'globalReserve', name: 'Global Reserve', inscription: ['Global', 'Reserve'],
       door: { cx: 1354, hw: 228, top: 710, bottom: 1695 },
-      plaque: { cx: 1368, w: 456, top: 494, bottom: 669 }, href: null,
+      plaque: [[1154,506],[1585,586],[1585,663],[1154,589]], href: null,
       video: 'assets/global-reserve.mp4' },
     { id: 'globalDream', name: 'Global Dream', inscription: ['Global', 'Dream'],
       door: { cx: 2017, hw: 172, top: 810, bottom: 1665 },
-      plaque: { cx: 2034, w: 364, top: 632, bottom: 765 }, href: null },
+      plaque: [[1863,641],[2211,695],[2211,760],[1863,713]], href: null },
     { id: 'globalConnections', name: 'Global Connections', inscription: ['Global', 'Connections'],
       door: { cx: 4501, hw: 172, top: 810, bottom: 1665 },
-      plaque: { cx: 4482, w: 364, top: 632, bottom: 765 }, href: null },
+      plaque: [[4302,696],[4650,643],[4650,714],[4302,760]], href: null },
     { id: 'recordLibrary', name: 'Record Library', inscription: ['Record', 'Library'],
       door: { cx: 5162, hw: 228, top: 710, bottom: 1695 },
-      plaque: { cx: 5149, w: 456, top: 494, bottom: 669 }, href: null },
+      plaque: [[4933,591],[5364,506],[5364,590],[4933,666]], href: null },
     { id: 'moveMoney', name: 'Move Money', inscription: ['Move', 'Money'],
       door: { cx: 5967, hw: 255, top: 590, bottom: 1735 },
-      plaque: { cx: 5940, w: 533, top: 307, bottom: 537 }, href: null },
+      plaque: [[5690,441],[6196,321],[6196,432],[5690,531]], href: null },
   ],
   roomPlaceholder: 'This room is being prepared. Its content will appear here soon.',
 };
@@ -136,31 +139,40 @@ const ATRIUM = {
   function textWidth(ctx, text, spacing) {
     return [...text].reduce((s, c) => s + ctx.measureText(c).width, 0) + spacing * (text.length - 1);
   }
+  // Надпись рисуется в локальных координатах филёнки: начало — в её центре,
+  // а вертикальный сдвиг (shear) наклоняет строки вдоль перспективы стены,
+  // оставляя буквы вертикальными.
   function drawInscription(ctx, room) {
-    const p = room.plaque, lines = room.inscription.map((l) => l.toUpperCase());
-    const ph = p.bottom - p.top, maxW = p.w * 0.8;
-    let size = (ph * 0.66) / (lines.length * 1.18);
+    const [lt, rt, rb, lb] = room.plaque, lines = room.inscription.map((l) => l.toUpperCase());
+    const ml = [(lt[0] + lb[0]) / 2, (lt[1] + lb[1]) / 2];   // середина левого края
+    const mr = [(rt[0] + rb[0]) / 2, (rt[1] + rb[1]) / 2];   // середина правого края
+    const pw = mr[0] - ml[0], k = (mr[1] - ml[1]) / pw;
+    const ph = Math.min(lb[1] - lt[1], rb[1] - rt[1]), maxW = pw * 0.8;
+    let size = (ph * 0.8) / (1 + 1.18 * (lines.length - 1));
     const fit = () => {
       ctx.font = `600 ${size}px Cinzel, "Trajan Pro", Georgia, serif`;
       return Math.max(...lines.map((l) => textWidth(ctx, l, size * 0.14)));
     };
     while (fit() > maxW && size > 8) size *= 0.95;
     const sp = size * 0.14, lh = size * 1.18;
-    const y0 = p.top + ph / 2 - (lh * (lines.length - 1)) / 2;
+    const y0 = -(lh * (lines.length - 1)) / 2;
+    ctx.save();
+    ctx.transform(1, k, 0, 1, (ml[0] + mr[0]) / 2, (ml[1] + mr[1]) / 2);
     ctx.textBaseline = 'middle';
     const d = Math.max(1, size * 0.045);
     lines.forEach((line, i) => {
       const y = y0 + i * lh;
       ctx.fillStyle = 'rgba(58, 32, 8, 0.8)';      // тень верхней кромки врезки
-      drawSpaced(ctx, line, p.cx, y - d * 1.3, sp);
+      drawSpaced(ctx, line, 0, y - d * 1.3, sp);
       ctx.fillStyle = 'rgba(255, 249, 232, 0.75)'; // блик нижней кромки
-      drawSpaced(ctx, line, p.cx, y + d * 1.1, sp);
+      drawSpaced(ctx, line, 0, y + d * 1.1, sp);
       const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
       g.addColorStop(0, '#6a4214'); g.addColorStop(0.42, '#c8943c');
       g.addColorStop(0.58, '#a8742c'); g.addColorStop(1, '#5c3810');
       ctx.fillStyle = g;
-      drawSpaced(ctx, line, p.cx, y, sp);
+      drawSpaced(ctx, line, 0, y, sp);
     });
+    ctx.restore();
   }
 
   /* ---------- цилиндр из 4 плиток (помещается в текстуры любых телефонов) ---------- */
@@ -192,7 +204,8 @@ const ATRIUM = {
       ctx.drawImage(img, -tw * i, 0);
       ctx.save(); ctx.scale(s, s); ctx.translate(-x0, 0);
       ATRIUM.rooms.forEach((r) => {
-        if (r.plaque.cx + r.plaque.w / 2 > x0 && r.plaque.cx - r.plaque.w / 2 < x1) drawInscription(ctx, r);
+        const xs = r.plaque.map(([x]) => x);
+        if (Math.max(...xs) > x0 && Math.min(...xs) < x1) drawInscription(ctx, r);
       });
       ctx.restore();
       buildTile(c, angleOf(x0), angleOf(x1));
@@ -212,9 +225,12 @@ const ATRIUM = {
     return pts.map(([x, y]) => toWorld(x, y));
   }
   function plaqueOutline(p) {
-    const x0 = p.cx - p.w / 2, x1 = p.cx + p.w / 2, pts = [];
-    for (let i = 0; i <= 8; i++) pts.push([x0 + (x1 - x0) * (i / 8), p.top]);
-    for (let i = 0; i <= 8; i++) pts.push([x1 - (x1 - x0) * (i / 8), p.bottom]);
+    // обходим четыре стороны с промежуточными точками, чтобы контур изгибался по цилиндру
+    const pts = [];
+    p.forEach((a, s) => {
+      const b = p[(s + 1) % 4], n = s % 2 ? 2 : 8;   // длинные стороны — верх и низ
+      for (let i = 0; i < n; i++) pts.push([a[0] + (b[0] - a[0]) * (i / n), a[1] + (b[1] - a[1]) * (i / n)]);
+    });
     return pts.map(([x, y]) => toWorld(x, y));
   }
   const SVGNS = 'http://www.w3.org/2000/svg';
