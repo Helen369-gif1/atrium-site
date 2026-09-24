@@ -129,12 +129,12 @@ const ATRIUM = {
   addEventListener('resize', resize);
 
   /* ---------- надписи на филёнках (рисуются прямо в текстуру) ---------- */
-  function drawSpaced(ctx, text, x, y, spacing) {
+  function drawSpaced(ctx, text, x, y, spacing, stroke = false) {
     const chars = [...text];
     const widths = chars.map((c) => ctx.measureText(c).width);
     const total = widths.reduce((s, w) => s + w, 0) + spacing * (chars.length - 1);
     let cx = x - total / 2;
-    chars.forEach((c, i) => { ctx.fillText(c, cx, y); cx += widths[i] + spacing; });
+    chars.forEach((c, i) => { stroke ? ctx.strokeText(c, cx, y) : ctx.fillText(c, cx, y); cx += widths[i] + spacing; });
   }
   function textWidth(ctx, text, spacing) {
     return [...text].reduce((s, c) => s + ctx.measureText(c).width, 0) + spacing * (text.length - 1);
@@ -147,28 +147,33 @@ const ATRIUM = {
     const ml = [(lt[0] + lb[0]) / 2, (lt[1] + lb[1]) / 2];   // середина левого края
     const mr = [(rt[0] + rb[0]) / 2, (rt[1] + rb[1]) / 2];   // середина правого края
     const pw = mr[0] - ml[0], k = (mr[1] - ml[1]) / pw;
-    const ph = Math.min(lb[1] - lt[1], rb[1] - rt[1]), maxW = pw * 0.8;
-    let size = (ph * 0.8) / (1 + 1.18 * (lines.length - 1));
+    // Кегль по меньшей высоте поля (заглавные Cinzel ≈ 0.7 кегля) и по 86% ширины
+    const ph = Math.min(lb[1] - lt[1], rb[1] - rt[1]), maxW = pw * 0.86, LH = 1.08;
+    let size = (ph * 0.92) / (0.7 + LH * (lines.length - 1));
     const fit = () => {
       ctx.font = `600 ${size}px Cinzel, "Trajan Pro", Georgia, serif`;
-      return Math.max(...lines.map((l) => textWidth(ctx, l, size * 0.14)));
+      return Math.max(...lines.map((l) => textWidth(ctx, l, size * 0.12)));
     };
-    while (fit() > maxW && size > 8) size *= 0.95;
-    const sp = size * 0.14, lh = size * 1.18;
+    while (fit() > maxW && size > 8) size *= 0.97;
+    const sp = size * 0.12, lh = size * LH;
     const y0 = -(lh * (lines.length - 1)) / 2;
     ctx.save();
     ctx.transform(1, k, 0, 1, (ml[0] + mr[0]) / 2, (ml[1] + mr[1]) / 2);
     ctx.textBaseline = 'middle';
-    const d = Math.max(1, size * 0.045);
+    ctx.lineJoin = 'round';
+    const d = Math.max(1, size * 0.05);
     lines.forEach((line, i) => {
       const y = y0 + i * lh;
-      ctx.fillStyle = 'rgba(58, 32, 8, 0.8)';      // тень верхней кромки врезки
+      ctx.fillStyle = 'rgba(40, 20, 4, 0.9)';      // тень верхней кромки врезки
       drawSpaced(ctx, line, 0, y - d * 1.3, sp);
-      ctx.fillStyle = 'rgba(255, 249, 232, 0.75)'; // блик нижней кромки
-      drawSpaced(ctx, line, 0, y + d * 1.1, sp);
+      ctx.fillStyle = 'rgba(255, 250, 236, 0.9)';  // блик нижней кромки
+      drawSpaced(ctx, line, 0, y + d * 1.2, sp);
       const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
-      g.addColorStop(0, '#6a4214'); g.addColorStop(0.42, '#c8943c');
-      g.addColorStop(0.58, '#a8742c'); g.addColorStop(1, '#5c3810');
+      g.addColorStop(0, '#3e2208'); g.addColorStop(0.42, '#8a5a1c');
+      g.addColorStop(0.58, '#6e4412'); g.addColorStop(1, '#321a06');
+      ctx.strokeStyle = '#2a1504';                 // тонкий тёмный контур делает штрих плотнее
+      ctx.lineWidth = Math.max(1, size * 0.035);
+      drawSpaced(ctx, line, 0, y, sp, true);
       ctx.fillStyle = g;
       drawSpaced(ctx, line, 0, y, sp);
     });
