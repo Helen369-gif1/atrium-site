@@ -1,7 +1,7 @@
 /* ======================================================================
    АТРИУМ 210° — НАСТРОЙКИ
    Всё, что обычно меняют, находится в этом блоке.
-   Координаты — в пикселях исходной картинки 6516 × 2172.
+   Координаты — в пикселях исходной картинки 6507 × 2175.
    ====================================================================== */
 const ATRIUM = {
   overline: 'Glonari',          // подпись над заголовком ('' — скрыть)
@@ -11,11 +11,24 @@ const ATRIUM = {
   hintTouch: 'Swipe to look around. Tap a doorway to enter.',
 
   image: {
-    full:  'assets/atrium-6516.webp',   // для компьютеров
-    small: 'assets/atrium-3258.webp',   // для телефонов
-    width: 6516, height: 2172,
+    full:  'assets/atrium-6507.webp',   // для компьютеров
+    small: 'assets/atrium-3254.webp',   // для телефонов
+    width: 6507, height: 2175,
     spanDeg: 210,        // сколько градусов по горизонтали покрывает картинка
-    horizonY: 1275,      // уровень глаз камеры (пиксель по вертикали)
+    horizonY: 1277,      // уровень глаз камеры (пиксель по вертикали)
+  },
+
+  // Вид за центральными окнами. Окна на картинке прозрачные, за ними стоит видео.
+  // video  — зацикленный ролик без звука; poster — кадр, который виден, пока видео грузится
+  //          (и вместо видео, если в системе включено «уменьшить движение»)
+  // rect   — куда ложится кадр, в пикселях картинки: x, y — левый верхний угол, w × h — размер.
+  //          Держите пропорции ролика (1280×704 ≈ 1.82) и перекрывайте окна с запасом.
+  //          Сдвинуть горизонт вверх/вниз — меняйте y.
+  // windowView: null — убрать видео (тогда поставьте картинку с непрозрачными окнами)
+  windowView: {
+    video:  'assets/window-view.mp4',
+    poster: 'assets/window-view.jpg',
+    rect: { x: 2351, y: 651, w: 1796, h: 988 },
   },
 
   // door:   cx — центр проёма, hw — половина ширины, top — верх арки, bottom — порог
@@ -26,24 +39,24 @@ const ATRIUM = {
   // href:   куда вести по клику (null — показать экран комнаты-заглушку)
   rooms: [
     { id: 'experience', name: 'Experience', inscription: ['Experience'],
-      door: { cx: 549,  hw: 255, top: 590, bottom: 1735 },
-      plaque: [[326,323], [829,437], [829,527], [326,427]], href: null },
+      door: { cx: 545,  hw: 250, top: 588, bottom: 1730 },
+      plaque: [[314,304], [824,422], [824,530], [314,420]], href: null },
     { id: 'globalReserve', name: 'Global Reserve', inscription: ['Global', 'Reserve'],
-      door: { cx: 1354, hw: 228, top: 710, bottom: 1695 },
-      plaque: [[1154,506],[1585,586],[1585,663],[1154,589]], href: null,
+      door: { cx: 1356, hw: 228, top: 712, bottom: 1695 },
+      plaque: [[1152,492],[1583,583],[1583,666],[1152,584]], href: null,
       video: 'assets/global-reserve.mp4' },
     { id: 'globalDream', name: 'Global Dream', inscription: ['Global', 'Dream'],
-      door: { cx: 2017, hw: 172, top: 810, bottom: 1665 },
-      plaque: [[1863,641],[2211,695],[2211,760],[1863,713]], href: null },
+      door: { cx: 2014, hw: 168, top: 811, bottom: 1665 },
+      plaque: [[1866,637],[2211,691],[2211,757],[1866,714]], href: null },
     { id: 'globalConnections', name: 'Global Connections', inscription: ['Global', 'Connections'],
-      door: { cx: 4501, hw: 172, top: 810, bottom: 1665 },
-      plaque: [[4302,696],[4650,643],[4650,714],[4302,760]], href: null },
+      door: { cx: 4496, hw: 168, top: 811, bottom: 1665 },
+      plaque: [[4299,698],[4647,631],[4647,707],[4299,757]], href: null },
     { id: 'recordLibrary', name: 'Record Library', inscription: ['Record', 'Library'],
-      door: { cx: 5162, hw: 228, top: 710, bottom: 1695 },
-      plaque: [[4933,591],[5364,506],[5364,590],[4933,666]], href: null },
+      door: { cx: 5162, hw: 227, top: 712, bottom: 1695 },
+      plaque: [[4929,584],[5367,489],[5367,583],[4929,663]], href: null },
     { id: 'moveMoney', name: 'Move Money', inscription: ['Move', 'Money'],
-      door: { cx: 5967, hw: 255, top: 590, bottom: 1735 },
-      plaque: [[5690,441],[6196,321],[6196,432],[5690,531]], href: null },
+      door: { cx: 5966, hw: 250, top: 590, bottom: 1735 },
+      plaque: [[5685,433],[6193,312],[6193,428],[5685,531]], href: null },
   ],
   roomPlaceholder: 'This room is being prepared. Its content will appear here soon.',
 };
@@ -197,8 +210,61 @@ const ATRIUM = {
     tex.encoding = THREE.sRGBEncoding;
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })));
+    // Окна прозрачные: текстура хранится с умноженной альфой, чтобы по краям окон не было тёмной каймы
+    tex.premultiplyAlpha = true;
+    scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      map: tex, side: THREE.DoubleSide, transparent: true,
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    })));
   }
+
+  /* ---------- вид за окнами: видео на цилиндре чуть дальше панорамы ---------- */
+  // Камера только вращается и не сдвигается, поэтому видео лежит «за стеной»
+  // и поворачивается вместе с залом, как настоящий вид из окна.
+  const WV = ATRIUM.windowView;
+  let windowVideo = null, windowMat = null;
+  function buildWindowView() {
+    if (!WV) return;
+    const { x, y, w, h } = WV.rect, K = 1.25, seg = 24;
+    const a0 = angleOf(x), a1 = angleOf(x + w);
+    const yT = ((IMG.horizonY - y) / R) * K, yB = ((IMG.horizonY - (y + h)) / R) * K;
+    const pos = [], uv = [], idx = [];
+    for (let i = 0; i <= seg; i++) {
+      const t = i / seg, a = a0 + (a1 - a0) * t, px = Math.sin(a) * K, pz = -Math.cos(a) * K;
+      pos.push(px, yT, pz, px, yB, pz); uv.push(t, 1, t, 0);
+      if (i < seg) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    windowMat = new THREE.MeshBasicMaterial({ color: 0x8fb8e0, side: THREE.DoubleSide });
+    scene.add(new THREE.Mesh(geo, windowMat));
+
+    const setMap = (tex) => { tex.encoding = THREE.sRGBEncoding; windowMat.map = tex; windowMat.color.set(0xffffff); windowMat.needsUpdate = true; dirty = true; };
+    if (WV.poster) new THREE.TextureLoader().load(WV.poster, (t) => { if (!windowMat.map) setMap(t); });
+    if (!WV.video || reduceMotion) return;
+
+    const v = document.createElement('video');
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.preload = 'auto';
+    v.src = WV.video;
+    windowVideo = v;
+    v.addEventListener('playing', () => { if (!(windowMat.map && windowMat.map.isVideoTexture)) setMap(new THREE.VideoTexture(v)); }, { once: true });
+    // перерисовываем сцену только когда в видео появился новый кадр
+    if ('requestVideoFrameCallback' in v) {
+      const onFrame = () => { dirty = true; v.requestVideoFrameCallback(onFrame); };
+      v.requestVideoFrameCallback(onFrame);
+    }
+    playWindow();
+    // если браузер не дал запустить видео сам (режим энергосбережения), запустим по первому касанию
+    addEventListener('pointerdown', playWindow, { once: true });
+  }
+  function playWindow() {
+    if (windowVideo && !inRoom && !document.hidden) windowVideo.play().catch(() => {});
+  }
+  function pauseWindow() { if (windowVideo) windowVideo.pause(); }
+  document.addEventListener('visibilitychange', () => (document.hidden ? pauseWindow() : playWindow()));
   function buildPanorama(img) {
     const s = img.naturalWidth / W, N = 4, tw = Math.round(img.naturalWidth / N);
     for (let i = 0; i < N; i++) {
@@ -337,6 +403,7 @@ const ATRIUM = {
         roomView.hidden = false;
         document.body.classList.add('in-room');
         if (r.video) roomVideo.play().catch(() => {});
+        pauseWindow();
         requestAnimationFrame(() => { veil.classList.remove('on'); roomView.classList.add('shown'); });
         backBtn.focus({ preventScroll: true });
         setBusy(false);
@@ -353,6 +420,7 @@ const ATRIUM = {
       document.body.classList.remove('in-room');
       roomVideo.pause(); roomVideo.removeAttribute('src'); roomVideo.load();
       inRoom = null; veil.classList.remove('on');
+      playWindow();
       document.body.classList.remove('entering');
       animateTo(clampView({ ...savedView }), reduceMotion ? 1 : 900, () => { setBusy(false); });
       setActive(null);
@@ -475,6 +543,7 @@ const ATRIUM = {
         view.yaw += dy * f; view.cy += dc * f; view.span += ds * f; clampView(view); dirty = true;
       }
     }
+    if (windowVideo && !windowVideo.paused && !('requestVideoFrameCallback' in windowVideo)) dirty = true;
     if (!dirty) return;
     dirty = false;
     applyCamera();
@@ -494,6 +563,7 @@ const ATRIUM = {
   ]);
   Promise.all([img.decode ? img.decode() : new Promise((r) => (img.onload = r)), fontsReady])
     .then(() => {
+      buildWindowView();
       buildPanorama(img);
       resize();
       if (!reduceMotion) {
