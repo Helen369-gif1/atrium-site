@@ -31,6 +31,17 @@ const ATRIUM = {
     rect: { x: 2351, y: 651, w: 1796, h: 988 },
   },
 
+  // Ведущая в центре зала. Видео проигрывается один раз, когда зал появляется на экране,
+  // и снова — каждый раз, когда посетитель возвращается из комнаты. В конце она замирает.
+  // Видео «двойное»: сверху цвет, снизу маска прозрачности (так прозрачность работает везде, и на iPhone).
+  // x — центр по горизонтали, bottom — нижний край кадра, height — высота кадра (всё в пикселях картинки)
+  // host: null — убрать ведущую
+  host: {
+    video:  'assets/gia.mp4',
+    poster: 'assets/gia-poster.jpg',
+    x: 3353, bottom: 2045, height: 870,
+  },
+
   // door:   cx — центр проёма, hw — половина ширины, top — верх арки, bottom — порог
   // plaque: внутреннее поле филёнки над аркой, куда вписывается надпись.
   //         На картинке филёнки нарисованы в перспективе, поэтому это не прямоугольник,
@@ -260,6 +271,104 @@ const ATRIUM = {
     // если браузер не дал запустить видео сам (режим энергосбережения), запустим по первому касанию
     addEventListener('pointerdown', playWindow, { once: true });
   }
+  /* ---------- ведущая: плоский кадр перед окнами, всегда лицом к камере ---------- */
+  const HOST = ATRIUM.host;
+  let hostVideo = null, hostMat = null, hostPending = false;
+  const alphaShader = {
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    // верхняя половина кадра — цвет (уже умножен на прозрачность), нижняя — маска
+    fragmentShader: 'uniform sampler2D map; varying vec2 vUv; void main(){' +
+      ' vec3 c = texture2D(map, vec2(vUv.x, 0.5 + vUv.y * 0.5)).rgb;' +
+      ' float a = texture2D(map, vec2(vUv.x, vUv.y * 0.5)).r;' +
+      ' if (a < 0.004) discard; gl_FragColor = vec4(c, a); }',
+  };
+  function flatPanel(cxPx, cyPx, wPx, hPx, depth, material, order) {
+    const a = angleOf(cxPx);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry((wPx / R) * depth, (hPx / R) * depth), material);
+    mesh.position.set(Math.sin(a) * depth, ((IMG.horizonY - cyPx) / R) * depth, -Math.cos(a) * depth);
+    mesh.rotation.y = -a;
+    mesh.renderOrder = order;
+    scene.add(mesh);
+    return mesh;
+  }
+  function buildHost() {
+    if (!HOST) return;
+    const h = HOST.height, w = h * (680 / 628), cy = HOST.bottom - h / 2;
+    const k = h / 628;   // масштаб: пиксели кадра видео -> пиксели картинки
+
+    // тени на мраморе: эллипс с радиальным градиентом, растянутый панелью до нужных размеров.
+    // fx, fy — центр в пикселях кадра видео (680 × 628), fw × fh — размер эллипса там же,
+    // stops — [доля радиуса, непрозрачность]
+    const shadow = (fx, fy, fw, fh, stops, depth) => {
+      const sc = document.createElement('canvas'); sc.width = sc.height = 128;
+      const g = sc.getContext('2d'), grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      stops.forEach(([t, a]) => grad.addColorStop(t, 'rgba(0,0,0,' + a + ')'));
+      g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+      const mat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), color: 0x000000, transparent: true, depthWrite: false });
+      flatPanel(HOST.x + (fx - 340) * k, HOST.bottom - (628 - fy) * k, fw * k, fh * k, depth, mat, 2);
+    };
+    // широкая рассеянная тень, очень мягкий край
+    shadow(340, 540, 640, 95, [[0, 0.38], [0.25, 0.3], [0.5, 0.17], [0.75, 0.06], [1, 0]], 0.815);
+    // контактная тень прямо под золотым основанием кресла
+    shadow(340, 540, 450, 42, [[0, 0.8], [0.45, 0.62], [0.75, 0.25], [1, 0]], 0.81);
+    // тени под туфлями
+    shadow(275, 600, 60, 12, [[0, 0.4], [0.5, 0.25], [1, 0]], 0.805);
+    shadow(480, 600, 60, 12, [[0, 0.4], [0.5, 0.25], [1, 0]], 0.805);
+
+    hostMat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: null } }, ...alphaShader,
+      transparent: true, depthWrite: false,
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+    const hostMesh = flatPanel(HOST.x, cy, w, h, 0.8, hostMat, 3);
+    hostMesh.visible = false;
+    // постер и видео фильтруются одинаково (без mipmap), иначе при подмене меняется резкость
+    const flat = (tex) => { tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; return tex; };
+    const show = (tex) => { hostMat.uniforms.map.value = tex; hostMesh.visible = true; dirty = true; };
+    if (HOST.poster) new THREE.TextureLoader().load(HOST.poster, (t) => { if (!hostMat.uniforms.map.value) show(flat(t)); });
+
+    const v = document.createElement('video');
+    v.muted = true; v.defaultMuted = true; v.playsInline = true; v.loop = false;
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.preload = 'auto';
+    v.src = HOST.video;
+    hostVideo = v;
+    let vtex = null;
+    // переключаемся с постера на видео только когда кадр уже декодирован:
+    // событие 'playing' приходит раньше, и на кадр-другой текстура пустая — ведущая мигает
+    // Браузер присылает кадр и до запуска (предзагрузка), поэтому ждём, пока видео реально пошло.
+    // VideoTexture сама загружает кадр только со следующего кадра видео — первый загружаем сразу,
+    // иначе на месте ведущей пустая текстура.
+    const toVideo = () => {
+      if (v.paused || v.currentTime <= 0 || v.readyState < v.HAVE_CURRENT_DATA) return;
+      if (!vtex) vtex = flat(new THREE.VideoTexture(v));
+      if (hostMat.uniforms.map.value !== vtex) { vtex.needsUpdate = true; show(vtex); }
+    };
+    v.addEventListener('ended', () => { hostPending = false; dirty = true; });
+    if ('requestVideoFrameCallback' in v) {
+      const onFrame = () => { toVideo(); dirty = true; v.requestVideoFrameCallback(onFrame); };
+      v.requestVideoFrameCallback(onFrame);
+    } else {
+      v.addEventListener('timeupdate', () => { if (v.currentTime > 0) toVideo(); });
+    }
+  }
+  // проиграть с начала (при появлении зала и при возврате из комнаты)
+  function playHost() {
+    if (!hostVideo || reduceMotion || inRoom) return;
+    hostPending = true;
+    try { hostVideo.currentTime = 0; } catch (e) {}
+    if (document.hidden) return;   // запустится, когда вкладку откроют
+    hostVideo.play().catch(() => addEventListener('pointerdown', () => { if (hostPending) hostVideo.play().catch(() => {}); }, { once: true }));
+  }
+  function stopHost() {
+    if (!hostVideo) return;
+    hostPending = false; hostVideo.pause();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!hostVideo) return;
+    if (document.hidden) hostVideo.pause();
+    else if (hostPending && !inRoom) hostVideo.play().catch(() => {});
+  });
+
   function playWindow() {
     if (windowVideo && !inRoom && !document.hidden) windowVideo.play().catch(() => {});
   }
@@ -387,6 +496,7 @@ const ATRIUM = {
     const r = byId[id];
     if (!r || busyFlag || inRoom) return;
     setBusy(true); savedView = { ...view }; setActive(id);
+    stopHost();
     document.body.classList.add('entering');
     const d = r.door, doorMid = (d.top + d.bottom) / 2;
     const to = { yaw: angleOf(d.cx), cy: (IMG.horizonY - doorMid) / R, span: ((d.bottom - d.top) / R) * 0.62 };
@@ -421,6 +531,7 @@ const ATRIUM = {
       roomVideo.pause(); roomVideo.removeAttribute('src'); roomVideo.load();
       inRoom = null; veil.classList.remove('on');
       playWindow();
+      playHost();
       document.body.classList.remove('entering');
       animateTo(clampView({ ...savedView }), reduceMotion ? 1 : 900, () => { setBusy(false); });
       setActive(null);
@@ -544,6 +655,7 @@ const ATRIUM = {
       }
     }
     if (windowVideo && !windowVideo.paused && !('requestVideoFrameCallback' in windowVideo)) dirty = true;
+    if (hostVideo && !hostVideo.paused && !('requestVideoFrameCallback' in hostVideo)) dirty = true;
     if (!dirty) return;
     dirty = false;
     applyCamera();
@@ -564,6 +676,7 @@ const ATRIUM = {
   Promise.all([img.decode ? img.decode() : new Promise((r) => (img.onload = r)), fontsReady])
     .then(() => {
       buildWindowView();
+      buildHost();
       buildPanorama(img);
       resize();
       if (!reduceMotion) {
@@ -572,6 +685,7 @@ const ATRIUM = {
       }
       requestAnimationFrame(tick);
       document.body.classList.add('ready');
+      setTimeout(playHost, reduceMotion ? 300 : 2000);   // ведущая начинает, когда зал «проявился»
     })
     .catch(() => { $('status').textContent = 'The atrium image did not load. Check that the assets folder sits next to index.html, then reload.'; });
 })();
